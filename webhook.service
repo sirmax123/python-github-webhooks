@@ -1,0 +1,23 @@
+[Unit]
+Description=Git Webhook
+After=syslog.target
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/usr/local/webhook
+ExecStart=/usr/bin/env python2 -u /usr/local/webhook/python-github-webhooks/webhooks.py
+Restart=always
+#Environment=PYTHONUNBUFFERED=0
+
+# Some distributions may not support these hardening directives. If you cannot start the service due
+# to an unknown option, comment out the ones not supported by your version of systemd.
+ProtectSystem=full
+PrivateDevices=yes
+PrivateTmp=yes
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

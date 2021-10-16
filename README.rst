@@ -2,17 +2,15 @@
 Python GitHub Webhooks
 ======================
 
-Simple Python WSGI application to handle GitHub webhooks.
-
+Это форк репозитория https://github.com/carlos-jenkins/python-github-webhooks
+с некоторыми изменениями в том числе добавлена поддержка gogs
 
 Install
 =======
 
 ::
 
-    git clone https://github.com/carlos-jenkins/python-github-webhooks.git
-    cd python-github-webhooks
-
+TODO
 
 Dependencies
 ============
@@ -163,6 +161,7 @@ You can also mount volume to setup the ``hooks/`` directory, and the file
       -v /path/to/my/hooks:/src/hooks \
       -v /path/to/my/config.json:/src/config.json \
       -p 5000:5000 python-github-webhooks
+
 
 
 Test your deployment
