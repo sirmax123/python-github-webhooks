@@ -16,11 +16,14 @@
 # under the License.
 
 import logging
-from sys import stderr, hexversion
-logging.basicConfig(stream=stderr)
+from sys import stderr, stdout, hexversion
+logging.basicConfig(stream=stdout, level=logging.INFO)
+#logging.setLevel(logging.INFO)
 
 import hmac
 from hashlib import sha1
+from hashlib import sha256
+
 from json import loads, dumps
 from subprocess import Popen, PIPE
 from tempfile import mkstemp
@@ -59,6 +62,9 @@ def index():
             u'{}'.format(request.access_route[0])  # Fix stupid ipaddress issue
         )
         whitelist = requests.get('https://api.github.com/meta').json()['hooks']
+        additional_allowed_ips = config.get('additional_allowed_ips', [])
+        whitelist = whitelist + additional_allowed_ips
+        logging.info(whitelist)
 
         for valid_ip in whitelist:
             if src_ip in ip_network(valid_ip):
@@ -73,16 +79,23 @@ def index():
     secret = config.get('enforce_secret', '')
     if secret:
         # Only SHA1 is supported
+
         header_signature = request.headers.get('X-Hub-Signature')
+
+        if header_signature is None:
+            header_signature = request.headers.get('X-Gogs-Signature')
+            header_signature="sha256=" + header_signature
+            digest = sha256
+        else:
+            digest = sha1
+        logging.info(header_signature)
+
         if header_signature is None:
             abort(403)
 
         sha_name, signature = header_signature.split('=')
-        if sha_name != 'sha1':
-            abort(501)
-
         # HMAC requires the key to be bytes, but data is string
-        mac = hmac.new(str(secret), msg=request.data, digestmod='sha1')
+        mac = hmac.new(str(secret), msg=request.data, digestmod=digest)
 
         # Python prior to 2.7.7 does not have hmac.compare_digest
         if hexversion >= 0x020707F0:
@@ -103,6 +116,7 @@ def index():
     # Gather data
     try:
         payload = request.get_json()
+        logging.info(payload)
     except Exception:
         logging.warning('Request parsing failed')
         abort(400)
@@ -145,7 +159,7 @@ def index():
     logging.info('Metadata:\n{}'.format(dumps(meta)))
 
     # Skip push-delete
-    if event == 'push' and payload['deleted']:
+    if event == 'push' and payload.get('deleted', False):
         logging.info('Skipping push-delete event for {}'.format(dumps(meta)))
         return dumps({'status': 'skipped'})
 
@@ -184,6 +198,9 @@ def index():
             'stderr': stderr.decode('utf-8'),
         }
 
+        logging.error(stdout)
+        logging.error(stderr)
+
         # Log errors if a hook failed
         if proc.returncode != 0:
             logging.error('{} : {} \n{}'.format(
@@ -203,4 +220,4 @@ def index():
 
 
 if __name__ == '__main__':
-    application.run(debug=True, host='0.0.0.0')
+    application.run(debug=True, host='0.0.0.0', port='25002')
