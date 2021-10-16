@@ -5,26 +5,28 @@ Python GitHub Webhooks
 Это форк репозитория https://github.com/carlos-jenkins/python-github-webhooks
 с некоторыми изменениями в том числе добавлена поддержка gogs
 
-Install
+Установка
 =======
 
 ::
 
-TODO
+  Скопировать в /usr/local/webhook/python-github-webhooks (в соответвии м путем в webhook.service)
+  * файл webhook.service - в /etc/systemd/system
+  * chown www-data:www-data -R ./hooks (пользователь может быть и другой - но нужно поменять в файле webhook.service)
 
-Dependencies
+
+
+Установка зависимостей
 ============
 
 ::
 
    sudo pip install -r requirements.txt
+   или если не лень - то поставить из пакетов (для 2-го питона!)
 
-
-Setup
+Настройка
 =====
-
-You can configure what the application does by copying the sample config file
-``config.json.sample`` to ``config.json`` and adapting it to your needs:
+``config.json`` - пример простой конфигурации
 
 ::
 
@@ -35,29 +37,17 @@ You can configure what the application does by copying the sample config file
         "hooks_path": "/.../hooks/"
     }
 
-:github_ips_only: Restrict application to be called only by GitHub IPs. IPs
- whitelist is obtained from
+:github_ips_only: Только адреса гитхаба, которые можно получить динамически у самого гитхаба
  `GitHub Meta <https://developer.github.com/v3/meta/>`_
- (`endpoint <https://api.github.com/meta>`_). Default: ``true``.
-:enforce_secret: Enforce body signature with HTTP header ``X-Hub-Signature``.
- See ``secret`` at
+:enforce_secret: Проверять подпись ``X-Hub-Signature``.
  `GitHub WebHooks Documentation <https://developer.github.com/v3/repos/hooks/>`_.
- Default: ``''`` (do not enforce).
-:return_scripts_info: Return a JSON with the ``stdout``, ``stderr`` and exit
- code for each executed hook using the hook name as key. If this option is set
- you will be able to see the result of your hooks from within your GitHub
- hooks configuration page (see "Recent Deliveries").
- Default: ``true``.
-:hooks_path: Configures a path to import the hooks. If not set, it'll import
- the hooks from the default location (/.../python-github-webhooks/hooks)
+:hooks_path: Путь к файлам хуков
 
-
-Adding Hooks
+Хуки
 ============
 
-This application will execute scripts in the hooks directory using the
-following order:
-
+По сути это просто код на питоне, и имя файла определяется по событию имени репозитория и бранче
+(при этом никто не мешает проверять все поля например в коде хука дополнительно)
 ::
 
     hooks/{event}-{name}-{branch}
@@ -70,6 +60,10 @@ payload for the request as first argument. The event type will be passed
 as second argument. For example:
 
 ::
+   В репозитории включен хук all и пример дженкис кода на groovy 
+   который по сути ничего не делает кроме как  показывает содержимое
+   в этом файле можно при желании написать обработчик для вызова отдельных
+   джоб для разных условий, что бы не тянуть логику обработки в код на питоне
 
     hooks/push-myrepo-master /tmp/sXFHji push
 
@@ -107,108 +101,51 @@ The payload structure depends on the event type. Please review:
 Deploy
 ======
 
-Apache
+Nginx
 ------
-
-To deploy in Apache, just add a ``WSGIScriptAlias`` directive to your
-VirtualHost file:
 
 ::
 
-    <VirtualHost *:80>
-        ServerAdmin you@my.site.com
-        ServerName  my.site.com
-        DocumentRoot /var/www/site.com/my/htdocs/
+server {
+    listen 25001 default_server;
+    root /var/www/html;
+    server_name _;
+    access_log /var/log/nginx/github-to-jenkins-proxy-access.log postdata;
+    error_log /var/log/nginx/github-to-jenkins-proxy-error.log;
 
-        # Handle Github webhook
-        <Directory "/var/www/site.com/my/python-github-webhooks">
-            Order deny,allow
-            Allow from all
-        </Directory>
-        WSGIScriptAlias /webhooks /var/www/site.com/my/python-github-webhooks/webhooks.py
+    location / {
+        client_body_buffer_size      64k;
+        client_body_in_single_buffer on;
+        proxy_pass                   http://127.0.0.1:25002;
+        proxy_set_header             Host $host:$server_port;
+        proxy_set_header             X-Real-IP $remote_addr;
+        proxy_set_header             X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header             X-Forwarded-Proto $scheme;
+        proxy_http_version           1.1;
+        proxy_request_buffering      off;
+    }
+}
 
-    </VirtualHost>
 
 You can now register the hook in your Github repository settings:
 
     https://github.com/youruser/myrepo/settings/hooks
 
-To register the webhook select Content type: ``application/json`` and set the URL to the URL
-of your WSGI script:
-
-::
-
-   http://my.site.com/webhooks
+To register the webhook select 
+* Content type: ``application/json``
+* URL  http://my.site.com:2501
 
 Docker
 ------
 
-To deploy in a Docker container you have to expose the port 5000, for example
-with the following command:
-
-::
-
-    git clone http://github.com/carlos-jenkins/python-github-webhooks.git
-    docker build -t carlos-jenkins/python-github-webhooks python-github-webhooks
-    docker run -d --name webhooks -p 5000:5000 carlos-jenkins/python-github-webhooks
-
-You can also mount volume to setup the ``hooks/`` directory, and the file
-``config.json``:
-
-::
-
-    docker run -d --name webhooks \
-      -v /path/to/my/hooks:/src/hooks \
-      -v /path/to/my/config.json:/src/config.json \
-      -p 5000:5000 python-github-webhooks
-
-
-
-Test your deployment
-====================
-
-To test your hook you may use the GitHub REST API with ``curl``:
-
-    https://developer.github.com/v3/
-
-::
-
-    curl --user "<youruser>" https://api.github.com/repos/<youruser>/<myrepo>/hooks
-
-Take note of the test_url.
-
-::
-
-    curl --user "<youruser>" -i -X POST <test_url>
-
-You should be able to see any log error in your webapp.
-
-
-Debug
-=====
-
-When running in Apache, the ``stderr`` of the hooks that return non-zero will
-be logged in Apache's error logs. For example:
-
-::
-
-    sudo tail -f /var/log/apache2/error.log
-
-Will log errors in your scripts if printed to ``stderr``.
-
-You can also launch the Flask web server in debug mode at port ``5000``.
-
-::
-
-    python webhooks.py
-
-This can help debug problem with the WSGI application itself.
-
+::  
+ по желанию
 
 License
 =======
 
 ::
+  Я конечно немного доработал код но оставляю оригинадльную лицензию
 
    Copyright (C) 2014-2015 Carlos Jenkins <carlos@jenkins.co.cr>
 

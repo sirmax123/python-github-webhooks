@@ -62,44 +62,55 @@ def index():
             u'{}'.format(request.access_route[0])  # Fix stupid ipaddress issue
         )
         whitelist = requests.get('https://api.github.com/meta').json()['hooks']
+        # If additional_allowed_ips is set add it to whitelist, e.g. for self-hosted Git servers
         additional_allowed_ips = config.get('additional_allowed_ips', [])
         whitelist = whitelist + additional_allowed_ips
         logging.info(whitelist)
+        logging.info(src_ip)
 
         for valid_ip in whitelist:
             if src_ip in ip_network(valid_ip):
+                logging.info("IP {ip} is in the network {ip_network}".format(ip=src_ip, ip_network=ip_network(valid_ip)))
                 break
+            else:
+                logging.info("IP {ip} is not in the network{ip_network}".format(ip=src_ip, ip_network=ip_network(valid_ip)))
         else:
-            logging.error('IP {} not allowed'.format(
-                src_ip
-            ))
+            logging.error('IP {} not allowed'.format(src_i))
             abort(403)
 
     # Enforce secret
     secret = config.get('enforce_secret', '')
     if secret:
+        logging.info("Checking secret:" + secret)
         # Only SHA1 is supported
-
         header_signature = request.headers.get('X-Hub-Signature')
 
         if header_signature is None:
+            logging.info("Github header is not found")
             header_signature = request.headers.get('X-Gogs-Signature')
             header_signature="sha256=" + header_signature
             digest = sha256
         else:
             digest = sha1
-        logging.info(header_signature)
+
+        logging.info("Header Signature: " + header_signature)
 
         if header_signature is None:
+            logging.info("Header with Signature is not found")
             abort(403)
 
+        logging.info("Digest is: " + str(digest))
         sha_name, signature = header_signature.split('=')
+        logging.debug("SHA name: " + sha_name)
+        logging.debug("Signature: " + signature)
         # HMAC requires the key to be bytes, but data is string
         mac = hmac.new(str(secret), msg=request.data, digestmod=digest)
+        logging.info("HMAC: " + str(mac))
 
         # Python prior to 2.7.7 does not have hmac.compare_digest
         if hexversion >= 0x020707F0:
             if not hmac.compare_digest(str(mac.hexdigest()), str(signature)):
+                logging.info("hmac.compare_digest error")
                 abort(403)
         else:
             # What compare_digest provides is protection against timing
@@ -172,8 +183,21 @@ def index():
     scripts.append(join(hooks, '{event}'.format(**meta)))
     scripts.append(join(hooks, 'all'))
 
+    logging.info("Scripts: " + str(scripts))
     # Check permissions
-    scripts = [s for s in scripts if isfile(s) and access(s, X_OK)]
+    #scripts = [s for s in scripts if isfile(s) and access(s, X_OK)]
+
+
+    existing_script_files = []
+    for s in scripts:
+        logging.info("Checkung " + s)
+        if isfile(s):
+            logging.info("Script:" + s + ": isfile()")
+            if access(s, X_OK):
+                logging.info("Script: " + s + " Access is X_OK")
+                existing_script_files.append(s)
+
+    logging.info("Existing Scripts: " + str(existing_script_files))
     if not scripts:
         return dumps({'status': 'nop'})
 
@@ -184,8 +208,8 @@ def index():
 
     # Run scripts
     ran = {}
-    for s in scripts:
-
+    for s in existing_script_files:
+        logging.info("Executing " + s)
         proc = Popen(
             [s, tmpfile, event],
             stdout=PIPE, stderr=PIPE
@@ -198,8 +222,8 @@ def index():
             'stderr': stderr.decode('utf-8'),
         }
 
-        logging.error(stdout)
-        logging.error(stderr)
+        logging.info(stdout)
+        logging.info(stderr)
 
         # Log errors if a hook failed
         if proc.returncode != 0:
