@@ -1,0 +1,10 @@
+{
+    "github_ips_only": true,
+    "enforce_secret": "019ecbc0-00fe-11ec-9f97-e7dd9753c34a",
+    "return_scripts_info": true,
+    "hooks_path": "hooks/",
+    "additional_allowed_ips": [
+        "127.0.0.0/8",
+        "192.168.0.0/16"
+    ]
+}
