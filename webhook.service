@@ -7,16 +7,16 @@ After=network.target
 Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/usr/local/webhook
-ExecStart=/usr/bin/env python2 -u /usr/local/webhook/python-github-webhooks/webhooks.py
+WorkingDirectory=/usr/local/webhook/python-github-webhooks
+ExecStart=/usr/bin/env python2 -u ./webhooks.py
 Restart=always
-#Environment=PYTHONUNBUFFERED=0
+Environment=PYTHONUNBUFFERED=0
 
 # Some distributions may not support these hardening directives. If you cannot start the service due
 # to an unknown option, comment out the ones not supported by your version of systemd.
 ProtectSystem=full
 PrivateDevices=yes
-PrivateTmp=yes
+PrivateTmp=no
 NoNewPrivileges=true
 
 [Install]
